@@ -22,6 +22,20 @@ String arm_incoming_str;
 
 bool receive_cnt_flag;
 
+bool lf_flag=false;
+bool lb_flag=false;
+bool rb_flag=false;
+bool rf_flag=false;
+
+
+enum motors{
+  LFMotor,
+  LBMotor,
+  RBMotor,
+  RFMotor,
+};
+
+
 bool direct_drive_flag;
 
 bool drive_live_flag;
@@ -90,6 +104,9 @@ float map_data(float x);
 String direction_funct(float y);
 String message_creator(float z);
 
+
+
+
 void setup() {
   nh.initNode();
   nh.advertise(driveFeedbackPub);
@@ -128,7 +145,12 @@ void loop() {
         delay(1);
   }
   
+  nh.spinOnce();
+
   DriveFeedbackListener();
+
+  nh.spinOnce();
+
   ScienceListener();
   armRead();
 
@@ -144,14 +166,17 @@ void multiArrayCallback(const std_msgs::Float64MultiArray &comingMultiArray){
   last_time = millis();
   
   drive_joystick_array.data[0]=comingMultiArray.data[0];
-  drive_joystick_array.data[1]=comingMultiArray.data[1];
+  drive_joystick_array.data[1]=comingMultiArray.data[0];
   drive_joystick_array.data[2]=comingMultiArray.data[2];
-  drive_joystick_array.data[3]=comingMultiArray.data[3];
+  drive_joystick_array.data[3]=comingMultiArray.data[2];
   torque_mode_float = comingMultiArray.data[4];
 
-  multiArrToArr(drive_joystick_array, joystick_float_array);
-  DriveSerial.println(generateMCUmessage(joystick_float_array, int(torque_mode_float)));
-  delay(1);
+  if(comingMultiArray.data_length==5){
+    multiArrToArr(drive_joystick_array, joystick_float_array);
+    DriveSerial.println(generateMCUmessage(joystick_float_array, int(torque_mode_float)));
+    Serial3.println("S0000000000000000F");
+    delay(1);
+  }
 
   for (int i =0; i <8; i ++) 
   {
@@ -177,13 +202,15 @@ void multiArrayCallback(const std_msgs::Float64MultiArray &comingMultiArray){
   bilim_float[10]=my_float2[0];
   bilim_float[11]=my_float2[2];
 
-
-  Serial3.println("S" + message_creator(bilim_float[0])+message_creator(bilim_float[1])+(int)bilim_float[2]+(int)bilim_float[3]+(int)bilim_float[4]+(int)bilim_float[5]+(int)bilim_float[6]+(int)bilim_float[7]+(int)bilim_float[8]+(int)bilim_float[9]+(int)bilim_float[10]+(int)bilim_float[11] + "F");
-  String debug_str = "S" + message_creator(bilim_float[0])+message_creator(bilim_float[1])+(int)bilim_float[2]+(int)bilim_float[3]+(int)bilim_float[4]+(int)bilim_float[5]+(int)bilim_float[6]+(int)bilim_float[7]+(int)bilim_float[8]+(int)bilim_float[9]+(int)bilim_float[10]+(int)bilim_float[11] + "F";
-  char debug_ch[50];
-  debug_str.toCharArray(debug_ch,50);
-  my_str.data = debug_ch;
-  str_topic.publish(&my_str);
+  if(comingMultiArray.data_length==8){
+    Serial3.println("S" + message_creator(bilim_float[0])+message_creator(bilim_float[1])+(int)bilim_float[2]+(int)bilim_float[3]+(int)bilim_float[4]+(int)bilim_float[5]+(int)bilim_float[6]+(int)bilim_float[7]+(int)bilim_float[8]+(int)bilim_float[9]+(int)bilim_float[10]+(int)bilim_float[11] + "F");
+    DriveSerial.println("S00000000000000000F");
+    String debug_str = "S" + message_creator(bilim_float[0])+message_creator(bilim_float[1])+(int)bilim_float[2]+(int)bilim_float[3]+(int)bilim_float[4]+(int)bilim_float[5]+(int)bilim_float[6]+(int)bilim_float[7]+(int)bilim_float[8]+(int)bilim_float[9]+(int)bilim_float[10]+(int)bilim_float[11] + "F";
+    char debug_ch[50];
+    debug_str.toCharArray(debug_ch,50);
+    my_str.data = debug_ch;
+    str_topic.publish(&my_str);
+  }
 }
 
 void marrayCallback2(const std_msgs::Float64MultiArray &comingMultiArray){
@@ -200,11 +227,11 @@ void multiArrToArr(std_msgs::Float64MultiArray command_arr, float *commands_to_s
 }
 
 int mapData(float coming_float){
-  coming_float=255*coming_float;
-  if(coming_float>255){
-    coming_float=255;
+  coming_float=999*coming_float;
+  if(coming_float>999){
+    coming_float=999;
   }
-  if(coming_float<=255){
+  if(coming_float<=999){
     coming_float=coming_float;
   }
   return coming_float;
@@ -244,17 +271,17 @@ void getThrustings(String encoderwDir){
   char direction_char;
   int direction;
   for(int i=0;i<ARRAY_LEN;i++){
-    direction_char=encoderwDir[4*i];
+    direction_char=encoderwDir[6*i];
     if(direction_char=='0'){
       direction=-1;
     }
     if(direction_char=='1'){
       direction=1;
     }
-    for(int j=i*4;j<(i*4)+3;j++){
+    for(int j=i*6;j<(i*6)+5;j++){
       str_buffer+=encoderwDir[j+1];    
     }
-    drive_published_feedback.data[i]=direction*str_buffer.toFloat()/255;
+    drive_published_feedback.data[i]=direction*str_buffer.toFloat()/70;
     str_buffer="";
     }
 }
@@ -278,6 +305,49 @@ void DriveFeedbackListener(void){
     }   
   }
 }
+
+/*
+void get_LF_rpm(void){
+  if (DriveSerial.available() > 0){
+    incoming_byte = DriveSerial.read();
+    if (incoming_byte == 'A'){
+      incoming_str = "";
+      lf_flag = true;
+      return;
+    }
+    else if (lf_flag = true && incoming_byte != 'B'){
+      incoming_str += (char) incoming_byte;
+    }
+    else if (incoming_byte == 'B'){
+      drive_published_feedback.data[0]=incoming_str.toFloat();
+      //driveFeedbackPub.publish(&drive_published_feedback);
+      incoming_str="";
+      lf_flag = false;
+    }  
+  }
+}
+
+
+void get_LB_rpm(void){
+  if (DriveSerial.available() > 0){
+    incoming_byte = DriveSerial.read();
+    if (incoming_byte == 'B'){
+      incoming_str = "";
+      lb_flag = true;
+      return;
+    }
+    else if (lb_flag = true && incoming_byte != 'C'){
+      incoming_str += (char) incoming_byte;
+    }
+    else if (incoming_byte == 'C'){
+      drive_published_feedback.data[1]=incoming_str.toFloat();
+      driveFeedbackPub.publish(&drive_published_feedback);
+      incoming_str="";
+      lb_flag = false;
+    }  
+  }
+}
+*/
 
 void armRead(void){
   static unsigned long arm_message_start_time=0;
